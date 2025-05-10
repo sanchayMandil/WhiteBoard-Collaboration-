@@ -1,0 +1,15 @@
+package which are use in client(frontend)
+1) reat-router-dom for routing
+2) axios for api hits
+3) react-toastify for good alter animation
+4) tailwindcss @tailwindcss/vite for styling
+5) imported some custom font style from google fonts
+
+for backend 
+1) npm init -y
+2) npm install express
+3) npm install mongoose
+4) npm install nodemon for instance changes
+5) npm install cors  (for cors otherwise it will noy allow us to send data from cient o server)
+6) npm install nodemailer ( for mail genration)
+7) npm install dotenv ( for smtp protocol environment)

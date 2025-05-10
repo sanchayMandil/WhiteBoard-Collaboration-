@@ -1,0 +1,54 @@
+@import url('https://fonts.googleapis.com/css2?family=Pacifico&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Crimson+Text:ital,wght@0,400;0,600;0,700;1,400;1,600;1,700&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Arvo:ital,wght@0,400;0,700;1,400;1,700&display=swap');
+@import "tailwindcss";
+
+.cursive {
+    font-family: "Pacifico", cursive;
+    font-weight: 400;
+    font-style: italic;
+    color: rgb(255, 255, 255);
+    -webkit-text-stroke: 1px rgb(125, 125, 125);
+}
+.cursive2 {
+    font-family: "Pacifico", cursive;
+    font-weight: 400;
+    font-style: italic;
+}
+.arvo-bold {
+    font-family: "Arvo", serif;
+    font-weight: 400;
+    font-style: normal;
+  }
+  .cube{
+    background-color: white;
+    border:white;
+  }
+  .cubImg{
+    height: 280px;
+    width: 280px;
+    border-radius: 15px;
+  }
+  .cubBut{
+    background-color: rgb(92, 92, 255);
+    border-radius: 10px;
+    font-size: 18px;
+    padding: 5px;
+    color: white;
+    margin-top: 15px;
+  }
+  .cubTxt{
+    width: 265px;
+    color: black;
+    padding: 5px;
+  }
+  .crimson-text-bold {
+    font-family: "Crimson Text", serif;
+    font-weight: 700;
+    font-style: normal;
+  }
+  .crimson-text-regular {
+    font-family: "Crimson Text", serif;
+    font-weight: 400;
+    font-style: normal;
+  }
