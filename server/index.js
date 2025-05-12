@@ -2,9 +2,9 @@ const express = require('express');
 const { connection_db } = require('./coonection');
 const verifyemial = require('./controller/mail');
 const cors = require('cors');
-const { saveContent, fetchBoard, loadContent, updateContent } = require('./controller/board');
+const { saveContent, fetchBoard,createBoard, deleteBoard ,loadContent, updateContent } = require('./controller/board');
 const users = require('./models/users');
-const { authenticationToken, loginVerify } = require('./controller/jwt');
+const { authenticationToken,register, loginVerify } = require('./controller/user');
 const http = require('http');
 const { Server } = require('socket.io');
 const Whiteboard = require('./models/board');
@@ -238,38 +238,18 @@ io.on('connection', (socket) => {
 });
 
 // Existing routes
-app.get('/', (req, res) => {
-  res.json({ id: 'hi' });
-});
+// app.get('/', (req, res) => {
+//   res.json({ id: 'hi' });
+// });
 app.get('/board/:id', loadContent);
 app.put('/board/:id', updateContent);
 app.get('/dashboard', fetchBoard);
-app.post('/register', async (req, res) => {
-  const { username, email, password } = req.body;
-  await users.create(req.body)
-    .then((user) => res.json(user))
-    .catch((err) => res.status(500).json(err));
-});
+app.delete('/dashboard/delete/:boardId', deleteBoard);
+app.post('/register', register);
 app.post('/login', loginVerify);
 app.post('/issue', saveIssue);
 app.post('/board/save', saveContent);
-app.get('/create', authenticationToken, async (req, res) => {
-  try {
-    const whiteboard = new Whiteboard({
-      title: 'Untitled',
-      layers: [
-        { id: 'layer-0', name: 'Host Layer', lines: [], isVisible: true },
-        { id: 'layer-1', name: 'Guest Layer', lines: [], isVisible: true },
-      ],
-      creatorEmail: req.user.email,
-    });
-    await whiteboard.save();
-    res.json({ whiteboardId: whiteboard._id, message: 'Whiteboard created' });
-  } catch (err) {
-    console.error('Error creating whiteboard:', err);
-    res.status(500).json({ message: 'Server error' });
-  }
-});
+app.get('/create', authenticationToken, createBoard);
 app.post('/verify', verifyemial);
 
 connection_db('mongodb://localhost:27017/WhiteBoard')

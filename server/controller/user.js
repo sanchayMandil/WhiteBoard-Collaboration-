@@ -58,5 +58,11 @@ function authenticationToken(req, res, next) {
         return res.status(400).send('Invalid token');
     }
 }
+async function register(req, res) {
+      const { username, email, password } = req.body;
+      await users.create(req.body)
+        .then((user) => res.json(user))
+        .catch((err) => res.status(500).json(err));
+}
 
-module.exports = { authenticationToken, loginVerify };
+module.exports = { authenticationToken, loginVerify, register };

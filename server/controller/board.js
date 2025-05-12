@@ -31,6 +31,37 @@ async function loadContent(req, res) {
   }
 }
 
+async function deleteBoard(req, res) {
+  console.log('Delete board request received');
+  console.log('req.params:', req.params);
+
+  try {
+    const boardId = req.params.boardId; // Access boardId directly
+    console.log('boardId:', boardId);
+
+    // Validate boardId format
+    if (!boardId.match(/^[0-9a-fA-F]{24}$/)) {
+      console.log('Invalid boardId format:', boardId);
+      return res.status(400).json({ message: 'Invalid boardId format' });
+    }
+
+    const deletedBoard = await Whiteboard.findByIdAndDelete(boardId);
+    console.log('Deletion attempt completed:', deletedBoard);
+
+    if (!deletedBoard) {
+      console.log('Whiteboard not found for ID:', boardId);
+      return res.status(404).json({ message: 'Whiteboard not found' });
+    }
+
+    console.log('Whiteboard deleted successfully:', deletedBoard);
+    res.status(200).json({ message: 'Whiteboard deleted successfully', boardId });
+  } catch (error) {
+    console.error('Error deleting whiteboard:', error);
+    res.status(500).json({ message: 'Server error', error: error.message });
+  }
+}
+
+
 // if exested bord content got updated content
 async function updateContent(req, res) {
   try {
@@ -69,4 +100,23 @@ async function fetchBoard(req, res) {
   }
 }
 
-module.exports = { saveContent, fetchBoard, loadContent, updateContent };
+
+async function createBoard(req, res) {
+   try {
+     const whiteboard = new Whiteboard({
+       title: 'Untitled',
+       layers: [
+         { id: 'layer-0', name: 'Host Layer', lines: [], isVisible: true },
+         { id: 'layer-1', name: 'Guest Layer', lines: [], isVisible: true },
+       ],
+       creatorEmail: req.user.email,
+     });
+     await whiteboard.save();
+     res.json({ whiteboardId: whiteboard._id, message: 'Whiteboard created' });
+   } catch (err) {
+     console.error('Error creating whiteboard:', err);
+     res.status(500).json({ message: 'Server error' });
+   }
+}
+
+module.exports = { saveContent, fetchBoard, createBoard, deleteBoard, loadContent, updateContent };

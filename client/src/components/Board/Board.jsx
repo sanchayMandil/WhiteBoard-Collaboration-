@@ -7,6 +7,8 @@ import { faPencil, faEraser, faUndo, faRedo, faEye, faEyeSlash, faLayerGroup, fa
 import axios from 'axios';
 import io from 'socket.io-client';
 import { debounce } from 'lodash';
+import { toast, ToastContainer } from 'react-toastify';
+import 'react-toastify/dist/ReactToastify.css';
 
 const ENDPOINT = 'http://localhost:5001';
 
@@ -315,12 +317,12 @@ const Board = () => {
   const saveWhiteboard = async () => {
     if (realTimeCollaborationStarted) {
       if (!isHost) {
-        alert('Only the host can save the whiteboard during collaboration mode.');
+        toast.error('Only the host can save the whiteboard during collaboration mode.');
         return;
       }
     } else {
       if (userEmail !== createdBy) {
-        alert('Only the creator can save the whiteboard when collaboration mode is off.');
+        toast.error('Only the creator can save the whiteboard when collaboration mode is off.');
         return;
       }
     }
@@ -334,7 +336,7 @@ const Board = () => {
           { headers: { Authorization: `Bearer ${localStorage.getItem('token')}` } }
         );
         setError(null);
-        alert('Whiteboard created successfully');
+        toast.success('Whiteboard created successfully');
       } else {
         response = await axios.put(
           `${ENDPOINT}/board/${whiteboardId}`,
@@ -342,19 +344,20 @@ const Board = () => {
           { headers: { Authorization: `Bearer ${localStorage.getItem('token')}` } }
         );
         setError(null);
-        alert('Whiteboard saved successfully');
+        toast.success('Whiteboard saved successfully');
       }
       return response.data;
     } catch (err) {
       setError('Failed to save whiteboard');
       console.error('Save error:', err);
+      toast.error('Failed to save whiteboard');
     }
   };
 
   const handleInviteClick = async () => {
     if (inviteLink) {
       navigator.clipboard.writeText(inviteLink);
-      alert('Invite link copied to clipboard!');
+      toast.success('Invite link copied to clipboard!');
       if (!realTimeCollaborationStarted) {
         setRealTimeCollaborationStarted(true);
       }
@@ -369,15 +372,17 @@ const Board = () => {
       setInviteLink(`${window.location.origin}/board/${newWhiteboardId}`);
       navigate(`/board/${newWhiteboardId}`);
       setRealTimeCollaborationStarted(true);
+      toast.success('Whiteboard created and invite link generated!');
     } catch (err) {
       setError('Failed to create whiteboard');
       console.error('Create error:', err);
+      toast.error('Failed to create whiteboard');
     }
   };
 
   const clearCanvas = () => {
     if (realTimeCollaborationStarted && !isHost) {
-      alert('Only the host can clear the layer in collaboration mode');
+      toast.error('Only the host can clear the layer in collaboration mode');
       return;
     }
   
@@ -390,6 +395,7 @@ const Board = () => {
     if (realTimeCollaborationStarted) {
       socketRef.current?.emit('clearLayer', activeLayerId);
     }
+    toast.success('Layer cleared successfully');
   };
 
   const undo = () => {
@@ -426,11 +432,12 @@ const Board = () => {
       setDrawingPermissions({ [userEmail]: true });
       setInviteLink('');
       setError(null);
-      alert('Session ended and whiteboard saved');
+      toast.success('Session ended and whiteboard saved');
       navigate('/dashboard');
     } catch (err) {
       setError('Failed to end session');
       console.error('End session error:', err);
+      toast.error('Failed to end session');
     }
   };
 
@@ -440,6 +447,9 @@ const Board = () => {
 
   return (
     <div className="flex h-screen bg-gray-100">
+      {/* Toast Container */}
+      <ToastContainer position="top-right" autoClose={3000} hideProgressBar={false} newestOnTop closeOnClick pauseOnHover />
+
       {/* Sidebar */}
       <div className="w-64 bg-white shadow-lg p-4 flex flex-col gap-4">
         <input
@@ -523,7 +533,7 @@ const Board = () => {
 
         <button
           onClick={() => !isSaveDisabled && saveWhiteboard()}
-          className={`p-2 rounded-md text-white ${
+          className={`p-2날짜 rounded-md text-white ${
             isSaveDisabled
               ? 'bg-gray-400 cursor-not-allowed opacity-50'
               : 'bg-green-500 hover:bg-green-600'
