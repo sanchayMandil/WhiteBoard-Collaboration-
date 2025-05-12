@@ -29,8 +29,8 @@ async function verifyemial(req, res) {
         port: 587,
         secure: false, // Set to true for port 465, false for others
         auth: {
-          user: "samanox146@gmail.com", // Use environment variable for email
-          pass: "tdmi pbtj dqii lvdl", // Use environment variable for app password
+          user: "xyz@gmail.com", // Use environment variable for email
+          pass: "password", // Use environment variable for app password
         },
       });
 
