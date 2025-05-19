@@ -35,7 +35,7 @@ async function verifyemial(req, res) {
       });
 
       const mailOptions = {
-        from: `"MyApp" samanox146@gmail.com`, // Correct sender format
+        from: `"MyApp" xyz6@gmail.com`, // Correct sender format
         to: Uemail, // Recipient address (from the request)
         subject: 'Welcome to MyApp!', // Subject of the email
         text: 'Thank you for registering with WhiteBoard! opt :' + OTP + '', // Plain text body
