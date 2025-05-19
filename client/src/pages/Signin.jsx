@@ -1,26 +1,28 @@
 import axios from "axios";
 import { useState } from "react";
-import { Link, useNavigate} from "react-router-dom";
+import { Link, useNavigate } from "react-router-dom";
+import { ToastContainer, toast } from 'react-toastify';
+import 'react-toastify/dist/ReactToastify.css';
 
 function Signin() {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
-  const [loginError, setLoginError] = useState(''); // Optional: To display error on UI
   const navigate = useNavigate(); 
   
   const handleLogin = async (e) => {
     e.preventDefault();
+    if (!email || !password) {
+      toast.error('Please fill in all fields');
+      return;
+    }
     try {
       const res = await axios.post('http://localhost:5001/login', { email, password });
       console.log("Login successful:", res.data);
       localStorage.setItem('token', res.data.token);
-      // Optionally, redirect the user upon successful login
-      // history.push('/dashboard');
-      setLoginError(''); // Clear any previous error
       navigate('/dashboard');
     } catch (err) {
-      console.error("Login failed:", err.response?.data?.error || err.message); // Log the error to console
-      setLoginError(err.response?.data?.error || 'Login failed'); // Set error state for UI (optional)
+      console.error("Login failed:", err.response?.data?.error || err.message);
+      toast.error(err.response?.data?.error || 'Login failed');
     }
   };
 
@@ -46,8 +48,7 @@ function Signin() {
               value={password}
               onChange={(e) => setPassword(e.target.value)}
             />
-             <br />
-             {loginError && <p className="text-red-500 pl-5">{loginError}</p>} {/* Optional: Display error on UI */}
+            <br />
             <button
               className="m-[15px] p-[12px] rounded-2xl bg-blue-600 text-white text-[20px] hover:bg-blue-900"
               type="submit"
@@ -71,6 +72,7 @@ function Signin() {
           </div>
         </div>
       </div>
+      <ToastContainer />
     </>
   );
 }

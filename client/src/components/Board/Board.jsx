@@ -3,7 +3,7 @@ import { Stage, Layer, Line } from 'react-konva';
 import { jwtDecode } from 'jwt-decode';
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
 import { useNavigate, useParams } from 'react-router-dom';
-import { faPencil, faEraser, faUndo, faRedo, faEye, faEyeSlash, faLayerGroup, faUsers, faSave, faLink, faCheck, faBan, faStop } from '@fortawesome/free-solid-svg-icons';
+import { faPencil, faEraser, faUndo, faRedo, faEye, faEyeSlash, faLayerGroup, faUsers, faSave, faLink, faCheck, faBan, faStop, faHandPaper, faSearchPlus, faSearchMinus } from '@fortawesome/free-solid-svg-icons';
 import axios from 'axios';
 import io from 'socket.io-client';
 import { debounce } from 'lodash';
@@ -25,7 +25,7 @@ const Board = () => {
   const [activeLayerId, setActiveLayerId] = useState('layer-0');
   const [title, setTitle] = useState('Untitled');
   const [isDrawing, setIsDrawing] = useState(false);
-  const [isEraserMode, setIsEraserMode] = useState(false);
+  const [toolMode, setToolMode] = useState('pencil'); // 'pencil', 'eraser', or 'pan'
   const [color, setColor] = useState('#000000');
   const [brushSize, setBrushSize] = useState(5);
   const [undoStack, setUndoStack] = useState([]);
@@ -39,18 +39,46 @@ const Board = () => {
   const [isLayerListVisible, setIsLayerListVisible] = useState(false);
   const [isParticipantListVisible, setIsParticipantListVisible] = useState(false);
   const [error, setError] = useState(null);
+  const [stageScale, setStageScale] = useState(1);
+  const [stagePos, setStagePos] = useState({ x: 0, y: 0 });
+  const [isPanning, setIsPanning] = useState(false);
+  const lastPanPos = useRef(null);
+  const errorTimeoutRef = useRef(null);
 
   const isHost = userEmail === createdBy;
   const hasDrawingPermission = isHost || drawingPermissions[userEmail] === true;
 
-  // Set active layer based on host status
+  const setErrorWithTimeout = useCallback((message) => {
+    if (errorTimeoutRef.current) {
+      clearTimeout(errorTimeoutRef.current);
+    }
+    setError(message);
+    if (message) {
+      errorTimeoutRef.current = setTimeout(() => {
+        setError(null);
+        errorTimeoutRef.current = null;
+      }, 3000);
+    }
+  }, []);
+
+  useEffect(() => {
+    console.log('Board component re-rendered', { userEmail, whiteboardId, drawingPermissions });
+  }, [userEmail, whiteboardId, drawingPermissions, layers]);
+
   useEffect(() => {
     if (userEmail) {
       setActiveLayerId(isHost ? 'layer-0' : 'layer-1');
     }
   }, [userEmail, isHost]);
 
-  // Debounced socket emission for drawing actions
+  useEffect(() => {
+    return () => {
+      if (errorTimeoutRef.current) {
+        clearTimeout(errorTimeoutRef.current);
+      }
+    };
+  }, []);
+
   const emitDrawAction = useCallback(
     debounce((layerId, lines, email) => {
       socketRef.current?.emit('drawAction', {
@@ -62,11 +90,23 @@ const Board = () => {
     []
   );
 
-  // Initialize user authentication and creator status
+  const emitCanvasState = useCallback(
+    debounce((pos, scale) => {
+      if (isHost) {
+        socketRef.current?.emit('canvasState', {
+          whiteboardId,
+          stagePos: pos,
+          stageScale: scale,
+        });
+      }
+    }, 50),
+    [isHost, whiteboardId]
+  );
+
   useEffect(() => {
     const token = localStorage.getItem('token');
     if (!token) {
-      setError('Please log in to access the whiteboard');
+      setErrorWithTimeout('Please log in to access the whiteboard');
       navigate('/');
       return;
     }
@@ -87,13 +127,12 @@ const Board = () => {
         setCreatedBy(email);
       }
     } catch (err) {
-      setError('Invalid session. Please log in again.');
+      setErrorWithTimeout('Invalid session. Please log in again.');
       localStorage.removeItem('token');
       navigate('/');
     }
   }, [navigate, whiteboardId]);
 
-  // Load whiteboard data
   useEffect(() => {
     if (!whiteboardId) return;
 
@@ -113,7 +152,7 @@ const Board = () => {
         }
         setInviteLink(`${window.location.origin}/board/${whiteboardId}`);
       } catch (err) {
-        setError('Failed to load whiteboard');
+        setErrorWithTimeout('Failed to load whiteboard');
         console.error('Load error:', err);
       }
     };
@@ -121,7 +160,6 @@ const Board = () => {
     loadWhiteboard();
   }, [whiteboardId]);
 
-  // Socket.IO connection
   useEffect(() => {
     if (!userEmail || !whiteboardId) return;
 
@@ -132,12 +170,12 @@ const Board = () => {
     });
 
     socketRef.current.on('connect', () => {
-      console.log('Connected to Socket.IO server');
+      console.log(`Socket connected for user: ${userEmail}, whiteboard: ${whiteboardId}`);
     });
 
     socketRef.current.on('connect_error', (err) => {
-      setError('Failed to connect to server. Retrying...');
-      console.error('Connection error:', err);
+      console.error(`Socket connection error for user: ${userEmail}, error:`, err);
+      setErrorWithTimeout('Failed to connect to server. Retrying...');
     });
 
     socketRef.current.on('participantsUpdated', (participants) => {
@@ -164,6 +202,13 @@ const Board = () => {
       }
     });
 
+    socketRef.current.on('canvasState', (data) => {
+      if (!isHost) {
+        setStagePos(data.stagePos);
+        setStageScale(data.stageScale);
+      }
+    });
+
     socketRef.current.on('clearLayer', (layerId) => {
       setLayers(prev => prev.map(layer =>
         layer.id === layerId ? { ...layer, lines: [] } : layer
@@ -173,34 +218,41 @@ const Board = () => {
     });
 
     socketRef.current.on('permissionUpdated', ({ email, canDraw }) => {
-      setDrawingPermissions(prev => ({
-        ...prev,
-        [email]: canDraw,
-      }));
+      setDrawingPermissions(prev => {
+        if (prev[email] === canDraw) {
+          console.log(`Skipped redundant permission update: email=${email}, canDraw=${canDraw}`);
+          return prev;
+        }
+        console.log(`Permission updated: email=${email}, canDraw=${canDraw}`);
+        return {
+          ...prev,
+          [email]: canDraw,
+        };
+      });
     });
 
     socketRef.current.on('sessionEnded', () => {
       if (!isHost) {
-        setError('Session has been ended by the host');
+        setErrorWithTimeout('Session has been ended by the host');
         socketRef.current?.disconnect();
         navigate('/');
       }
     });
 
     socketRef.current.on('error', (message) => {
-      setError(message);
+      setErrorWithTimeout(message);
       console.error('Socket error:', message);
     });
 
     return () => {
       socketRef.current?.disconnect();
+      console.log(`Socket disconnected for user: ${userEmail}, whiteboard: ${whiteboardId}`);
     };
-  }, [userEmail, whiteboardId, layers, createdBy, isHost, navigate]);
+  }, [userEmail, whiteboardId, createdBy, isHost, navigate]);
 
-  // Permission handling
   const grantPermission = (email) => {
     if (!isHost) {
-      setError('Only the host can grant permissions');
+      setErrorWithTimeout('Only the host can grant permissions');
       return;
     }
     socketRef.current?.emit('grantPermission', { whiteboardId, email });
@@ -208,72 +260,80 @@ const Board = () => {
 
   const revokePermission = (email) => {
     if (!isHost) {
-      setError('Only the host can revoke permissions');
+      setErrorWithTimeout('Only the host can revoke permissions');
       return;
     }
     socketRef.current?.emit('revokePermission', { whiteboardId, email });
   };
 
-  // Drawing handlers
   const startDrawing = useCallback(() => {
+    if (toolMode === 'pan') return;
     const pos = stageRef.current.getPointerPosition();
     if (!pos) return;
 
     if (isHost && activeLayerId !== 'layer-0') {
-      setError('Host can only draw on Host Layer');
+      setErrorWithTimeout('Host can only draw on Host Layer');
       return;
     }
     if (!isHost && activeLayerId !== 'layer-1') {
-      setError('Guests can only draw on Guest Layer');
+      setErrorWithTimeout('Guests can only draw on Guest Layer');
       return;
     }
     if (!hasDrawingPermission) {
-      setError('You do not have permission to draw');
+      setErrorWithTimeout('You do not have permission to draw');
       return;
     }
 
+    // Transform stage coordinates to canvas coordinates
+    const canvasX = (pos.x - stagePos.x) / stageScale;
+    const canvasY = (pos.y - stagePos.y) / stageScale;
+
     setIsDrawing(true);
-    if (!isEraserMode) {
+    if (toolMode !== 'eraser') {
       setLayers(prev => prev.map(layer =>
         layer.id === activeLayerId ? {
           ...layer,
-          lines: [...layer.lines, { points: [pos.x, pos.y], color, brushSize }],
+          lines: [...layer.lines, { points: [canvasX, canvasY], color, brushSize }],
         } : layer
       ));
     }
-  }, [activeLayerId, color, brushSize, isEraserMode, isHost, hasDrawingPermission]);
+  }, [activeLayerId, color, brushSize, toolMode, isHost, hasDrawingPermission, stagePos, stageScale]);
 
   const drawOrErase = useCallback(() => {
-    if (!isDrawing) return;
+    if (!isDrawing || toolMode === 'pan') return;
     
     const pos = stageRef.current.getPointerPosition();
     if (!pos) return;
 
     if (isHost && activeLayerId !== 'layer-0') {
-      setError('Host can only draw on Host Layer');
+      setErrorWithTimeout('Host can only draw on Host Layer');
       return;
     }
     if (!isHost && activeLayerId !== 'layer-1') {
-      setError('Guests can only draw on Guest Layer');
+      setErrorWithTimeout('Guests can only draw on Guest Layer');
       return;
     }
     if (!hasDrawingPermission) {
-      setError('You do not have permission to draw');
+      setErrorWithTimeout('You do not have permission to draw');
       return;
     }
+
+    // Transform stage coordinates to canvas coordinates
+    const canvasX = (pos.x - stagePos.x) / stageScale;
+    const canvasY = (pos.y - stagePos.y) / stageScale;
 
     setLayers(prev => {
       const newLayers = prev.map(layer => {
         if (layer.id !== activeLayerId) return layer;
 
-        if (isEraserMode) {
+        if (toolMode === 'eraser') {
           return {
             ...layer,
             lines: layer.lines.filter(line => {
               for (let i = 0; i < line.points.length; i += 2) {
                 const x = line.points[i];
                 const y = line.points[i + 1];
-                const distance = Math.sqrt((pos.x - x) ** 2 + (pos.y - y) ** 2);
+                const distance = Math.sqrt((canvasX - x) ** 2 + (canvasY - y) ** 2);
                 if (distance < brushSize) return false;
               }
               return true;
@@ -284,7 +344,7 @@ const Board = () => {
             ...layer,
             lines: layer.lines.map((line, i) =>
               i === layer.lines.length - 1
-                ? { ...line, points: [...line.points, pos.x, pos.y] }
+                ? { ...line, points: [...line.points, canvasX, canvasY] }
                 : line
             ),
           };
@@ -296,7 +356,7 @@ const Board = () => {
 
       return newLayers;
     });
-  }, [isDrawing, isEraserMode, activeLayerId, brushSize, userEmail, emitDrawAction, isHost, hasDrawingPermission]);
+  }, [isDrawing, toolMode, activeLayerId, brushSize, userEmail, emitDrawAction, isHost, hasDrawingPermission, stagePos, stageScale]);
 
   const stopDrawing = useCallback(() => {
     if (isDrawing) {
@@ -313,7 +373,121 @@ const Board = () => {
     }
   }, [isDrawing, layers, activeLayerId, userEmail, emitDrawAction]);
 
-  // Whiteboard controls
+  const handleWheel = useCallback((e) => {
+    if (!isHost) return;
+    e.evt.preventDefault();
+    const scaleBy = 1.1;
+    const stage = stageRef.current;
+    const oldScale = stageScale;
+    const pointer = stage.getPointerPosition();
+
+    const mousePointTo = {
+      x: (pointer.x - stagePos.x) / oldScale,
+      y: (pointer.y - stagePos.y) / oldScale,
+    };
+
+    const newScale = e.evt.deltaY < 0 ? oldScale * scaleBy : oldScale / scaleBy;
+    const boundedScale = Math.min(Math.max(0.5, newScale), 3);
+
+    setStageScale(boundedScale);
+    const newPos = {
+      x: pointer.x - mousePointTo.x * boundedScale,
+      y: pointer.y - mousePointTo.y * boundedScale,
+    };
+    setStagePos(newPos);
+
+    emitCanvasState(newPos, boundedScale);
+  }, [isHost, stageScale, stagePos, emitCanvasState]);
+
+  const zoomIn = () => {
+    if (!isHost) return;
+    const scaleBy = 1.2;
+    const stage = stageRef.current;
+    const oldScale = stageScale;
+    const center = {
+      x: (window.innerWidth - 256) / 2,
+      y: window.innerHeight / 2,
+    };
+
+    const mousePointTo = {
+      x: (center.x - stagePos.x) / oldScale,
+      y: (center.y - stagePos.y) / oldScale,
+    };
+
+    const newScale = oldScale * scaleBy;
+    const boundedScale = Math.min(Math.max(0.5, newScale), 3);
+
+    setStageScale(boundedScale);
+    const newPos = {
+      x: center.x - mousePointTo.x * boundedScale,
+      y: center.y - mousePointTo.y * boundedScale,
+    };
+    setStagePos(newPos);
+
+    emitCanvasState(newPos, boundedScale);
+  };
+
+  const zoomOut = () => {
+    if (!isHost) return;
+    const scaleBy = 1.2;
+    const stage = stageRef.current;
+    const oldScale = stageScale;
+    const center = {
+      x: (window.innerWidth - 256) / 2,
+      y: window.innerHeight / 2,
+    };
+
+    const mousePointTo = {
+      x: (center.x - stagePos.x) / oldScale,
+      y: (center.y - stagePos.y) / oldScale,
+    };
+
+    const newScale = oldScale / scaleBy;
+    const boundedScale = Math.min(Math.max(0.5, newScale), 3);
+
+    setStageScale(boundedScale);
+    const newPos = {
+      x: center.x - mousePointTo.x * boundedScale,
+      y: center.y - mousePointTo.y * boundedScale,
+    };
+    setStagePos(newPos);
+
+    emitCanvasState(newPos, boundedScale);
+  };
+
+  const startPanning = useCallback(() => {
+    if (!isHost || toolMode !== 'pan') return;
+    setIsPanning(true);
+    const pos = stageRef.current.getPointerPosition();
+    lastPanPos.current = pos;
+  }, [isHost, toolMode]);
+
+  const panCanvas = useCallback(() => {
+    if (!isPanning || !isHost || toolMode !== 'pan') return;
+    const pos = stageRef.current.getPointerPosition();
+    if (!pos || !lastPanPos.current) return;
+
+    const dx = pos.x - lastPanPos.current.x;
+    const dy = pos.y - lastPanPos.current.y;
+
+    setStagePos(prev => {
+      const newPos = {
+        x: prev.x + dx,
+        y: prev.y + dy,
+      };
+      emitCanvasState(newPos, stageScale);
+      return newPos;
+    });
+    lastPanPos.current = pos;
+  }, [isPanning, isHost, toolMode, stageScale, emitCanvasState]);
+
+  const stopPanning = useCallback(() => {
+    if (isPanning) {
+      setIsPanning(false);
+      lastPanPos.current = null;
+    }
+  }, [isPanning]);
+
   const saveWhiteboard = async () => {
     if (realTimeCollaborationStarted) {
       if (!isHost) {
@@ -335,7 +509,7 @@ const Board = () => {
           { title, layers, creatorEmail: userEmail },
           { headers: { Authorization: `Bearer ${localStorage.getItem('token')}` } }
         );
-        setError(null);
+        setErrorWithTimeout(null);
         toast.success('Whiteboard created successfully');
       } else {
         response = await axios.put(
@@ -343,12 +517,12 @@ const Board = () => {
           { title, layers, creatorEmail: userEmail },
           { headers: { Authorization: `Bearer ${localStorage.getItem('token')}` } }
         );
-        setError(null);
+        setErrorWithTimeout(null);
         toast.success('Whiteboard saved successfully');
       }
       return response.data;
     } catch (err) {
-      setError('Failed to save whiteboard');
+      setErrorWithTimeout('Failed to save whiteboard');
       console.error('Save error:', err);
       toast.error('Failed to save whiteboard');
     }
@@ -374,7 +548,7 @@ const Board = () => {
       setRealTimeCollaborationStarted(true);
       toast.success('Whiteboard created and invite link generated!');
     } catch (err) {
-      setError('Failed to create whiteboard');
+      setErrorWithTimeout('Failed to create whiteboard');
       console.error('Create error:', err);
       toast.error('Failed to create whiteboard');
     }
@@ -382,7 +556,7 @@ const Board = () => {
 
   const clearCanvas = () => {
     if (realTimeCollaborationStarted && !isHost) {
-      toast.error('Only the host can clear the layer in collaboration mode');
+      toast.error('Only the host can clear the layer in collaboration status mode');
       return;
     }
   
@@ -414,28 +588,26 @@ const Board = () => {
 
   const endSession = async () => {
     if (!isHost) {
-      setError('Only the host can end the session');
+      setErrorWithTimeout('Only the host can end the session');
       return;
     }
     if (!realTimeCollaborationStarted) {
-      setError('Session is not in collaboration mode');
+      setErrorWithTimeout('Session is not in collaboration mode');
       return;
     }
 
     try {
-      // Save the whiteboard before ending the session
       await saveWhiteboard();
-      // Emit end session event
       socketRef.current?.emit('endSession', { whiteboardId });
       setRealTimeCollaborationStarted(false);
       setParticipants([participants.find(p => p.email === userEmail)]);
       setDrawingPermissions({ [userEmail]: true });
       setInviteLink('');
-      setError(null);
+      setErrorWithTimeout(null);
       toast.success('Session ended and whiteboard saved');
       navigate('/dashboard');
     } catch (err) {
-      setError('Failed to end session');
+      setErrorWithTimeout('Failed to end session');
       console.error('End session error:', err);
       toast.error('Failed to end session');
     }
@@ -447,10 +619,8 @@ const Board = () => {
 
   return (
     <div className="flex h-screen bg-gray-100">
-      {/* Toast Container */}
       <ToastContainer position="top-right" autoClose={3000} hideProgressBar={false} newestOnTop closeOnClick pauseOnHover />
 
-      {/* Sidebar */}
       <div className="w-64 bg-white shadow-lg p-4 flex flex-col gap-4">
         <input
           type="text"
@@ -486,20 +656,47 @@ const Board = () => {
 
         <div className="flex gap-2">
           <button
-            onClick={() => setIsEraserMode(true)}
-            className={`flex-1 p-2 rounded-md ${isEraserMode ? 'bg-blue-500 text-white' : 'bg-gray-200'}`}
+            onClick={() => setToolMode('eraser')}
+            className={`flex-1 p-2 rounded-md ${toolMode === 'eraser' ? 'bg-blue-500 text-white' : 'bg-gray-200 hover:bg-gray-300'}`}
             disabled={!hasDrawingPermission}
           >
             <FontAwesomeIcon icon={faEraser} />
           </button>
           <button
-            onClick={() => setIsEraserMode(false)}
-            className={`flex-1 p-2 rounded-md ${!isEraserMode ? 'bg-blue-500 text-white' : 'bg-gray-200'}`}
+            onClick={() => setToolMode('pencil')}
+            className={`flex-1 p-2 rounded-md ${toolMode === 'pencil' ? 'bg-blue-500 text-white' : 'bg-gray-200 hover:bg-gray-300'}`}
             disabled={!hasDrawingPermission}
           >
             <FontAwesomeIcon icon={faPencil} />
           </button>
+          {isHost && (
+            <button
+              onClick={() => setToolMode('pan')}
+              className={`flex-1 p-2 rounded-md ${toolMode === 'pan' ? 'bg-blue-500 text-white' : 'bg-gray-200 hover:bg-gray-300'}`}
+            >
+              <FontAwesomeIcon icon={faHandPaper} />
+            </button>
+          )}
         </div>
+
+        {isHost && (
+          <div className="flex gap-2">
+            <button
+              onClick={zoomIn}
+              className="flex-1 p-2 bg-gray-200 rounded-md hover:bg-gray-300"
+              title="Zoom In"
+            >
+              <FontAwesomeIcon icon={faSearchPlus} />
+            </button>
+            <button
+              onClick={zoomOut}
+              className="flex-1 p-2 bg-gray-200 rounded-md hover:bg-gray-300"
+              title="Zoom Out"
+            >
+              <FontAwesomeIcon icon={faSearchMinus} />
+            </button>
+          </div>
+        )}
 
         <div className="flex gap-2">
           <button
@@ -533,7 +730,7 @@ const Board = () => {
 
         <button
           onClick={() => !isSaveDisabled && saveWhiteboard()}
-          className={`p-2날짜 rounded-md text-white ${
+          className={`p-2 rounded-md text-white ${
             isSaveDisabled
               ? 'bg-gray-400 cursor-not-allowed opacity-50'
               : 'bg-green-500 hover:bg-green-600'
@@ -575,13 +772,12 @@ const Board = () => {
         )}
       </div>
 
-      {/* Canvas */}
       <div className="flex-1 relative">
         {error && (
           <div className="absolute top-0 left-0 right-0 bg-red-500 text-white p-2 text-center">
             {error}
             <button
-              onClick={() => setError(null)}
+              onClick={() => setErrorWithTimeout(null)}
               className="ml-2 text-sm underline"
             >
               Dismiss
@@ -593,12 +789,17 @@ const Board = () => {
           width={window.innerWidth - 256}
           height={window.innerHeight}
           ref={stageRef}
-          onMouseDown={startDrawing}
-          onMouseMove={drawOrErase}
-          onMouseUp={stopDrawing}
-          onTouchStart={startDrawing}
-          onTouchMove={drawOrErase}
-          onTouchEnd={stopDrawing}
+          scaleX={stageScale}
+          scaleY={stageScale}
+          x={stagePos.x}
+          y={stagePos.y}
+          onMouseDown={toolMode === 'pan' ? startPanning : startDrawing}
+          onMouseMove={toolMode === 'pan' ? panCanvas : drawOrErase}
+          onMouseUp={toolMode === 'pan' ? stopPanning : stopDrawing}
+          onTouchStart={toolMode === 'pan' ? startPanning : startDrawing}
+          onTouchMove={toolMode === 'pan' ? panCanvas : drawOrErase}
+          onTouchEnd={toolMode === 'pan' ? stopPanning : stopDrawing}
+          onWheel={handleWheel}
         >
           {layers.map(layer => (
             <Layer key={layer.id} visible={layer.isVisible}>
@@ -617,7 +818,6 @@ const Board = () => {
           ))}
         </Stage>
 
-        {/* Layer and Participant Controls */}
         <div className="absolute bottom-4 left-1/2 -translate-x-1/2 flex gap-4">
           <button
             onClick={() => setIsLayerListVisible(!isLayerListVisible)}

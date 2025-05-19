@@ -42,14 +42,14 @@ function Navi() {
       <nav className='text-white bg-gray-600/25 border-cyan-50 border-b-1
       items-center z-10 fixed top-0 w-full justify-between flex'>
         <Link to="/"
-          className="text-[35px] p-[5px] m-[5px] text-white cursive2 ">
+          className="text-[35px] pl-8 pt-2 m-[5px]  text-white cursive2 ">
           WhiteBoard
         </Link>
         <div className='arvo-bold text-[12px] m-[5px] '>
           {isLoggedIn ? (
             <>
-              <Link to='/dashboard'className='p-[10px] mr-5'> {userName}</Link>
-              <button onClick={handleLogout} className='p-[10px] border-[1px] rounded-2xl mr-5'>Logout</button>
+              <Link to='/dashboard'className='pr-2 mr-5'> {userName}</Link>
+              <button onClick={handleLogout} className='p-[10px] mr-5 border-[1px] rounded-2xl'>Logout</button>
             </>
           ) : (
             <Link to="/login" className='p-[10px] border-[1px] rounded-2xl mr-5'>Sign in / up</Link>

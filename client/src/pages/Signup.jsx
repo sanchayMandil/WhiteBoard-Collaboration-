@@ -1,7 +1,8 @@
-import { Link, useNavigate} from "react-router-dom";
-import { useState, useEffect, useCallback } from "react"; // Import useCallback
+import { Link, useNavigate } from "react-router-dom";
+import { useState, useEffect, useCallback } from "react";
 import axios from "axios";
-import {ToastContainer,toast,Bounce} from 'react-toastify'
+import { ToastContainer, toast, Bounce } from 'react-toastify';
+import 'react-toastify/dist/ReactToastify.css';
 
 function Signup() {
     const [username, setUsername] = useState('');
@@ -12,24 +13,47 @@ function Signup() {
     const [isButtonDisabled, setIsButtonDisabled] = useState(true);
     const [showOtpInput, setShowOtpInput] = useState(false);
     const [otp, setOtp] = useState('');
-    const [vopt ,setVotp] = useState('');
+    const [vopt, setVotp] = useState('');
+    const [usernameError, setUsernameError] = useState('');
     const navigate = useNavigate();
 
-    const checkCorrect = useCallback((str) => { // Use useCallback
+    // Username validation: cannot start with number, only letters and numbers allowed
+    const validateUsername = useCallback((value) => {
+        if (!value) {
+            setUsernameError('Username is required');
+            return false;
+        }
+        if (/^\d/.test(value)) {
+            setUsernameError('Username cannot start with a number');
+            return false;
+        }
+        if (!/^[a-zA-Z][a-zA-Z0-9]*$/.test(value)) {
+            setUsernameError('Username can only contain letters and numbers');
+            return false;
+        }
+        if (value.length < 3) {
+            setUsernameError('Username must be at least 3 characters');
+            return false;
+        }
+        setUsernameError('');
+        return true;
+    }, []);
+
+    const checkCorrect = useCallback((str) => {
         if (password !== str) {
-            setPassMatch('*Password do not match');
+            setPassMatch('*Passwords do not match');
         } else {
             setPassMatch('');
         }
         setConfirmPassword(str);
-    }, [password]); // Dependency array includes password
+    }, [password]);
 
-    const handleRegSubmit = useCallback(async (e) => { // Use useCallback
+    const handleRegSubmit = useCallback(async (e) => {
         e.preventDefault();
-        if (password === confirmPassword && otp === vopt) {
+        if (password === confirmPassword && otp === vopt && validateUsername(username)) {
             try {
                 const res = await axios.post('http://localhost:5001/register', { username, email, password, otp });
-                toast.success('Register Sucessfully!'+username, {
+                toast.success('Registered Successfully! ' + username, {
                     position: "top-center",
                     autoClose: 3000,
                     hideProgressBar: false,
@@ -60,17 +84,20 @@ function Signup() {
                 }
             }
         }
-    }, [password, confirmPassword, otp, vopt, navigate, username]); // Dependency array includes relevant state and navigate
+    }, [password, confirmPassword, otp, vopt, navigate, username]);
 
     useEffect(() => {
-        setIsButtonDisabled(!(username && email && password && confirmPassword && password === confirmPassword && (showOtpInput ? otp.length === 6 : true)));
-    }, [username, email, password, confirmPassword, showOtpInput, otp]);
+        const isUsernameValid = validateUsername(username);
+        setIsButtonDisabled(
+            !(isUsernameValid && email && password && confirmPassword && 
+              password === confirmPassword && (showOtpInput ? otp.length === 6 : true))
+        );
+    }, [username, email, password, confirmPassword, showOtpInput, otp, validateUsername]);
 
-    const handleVerifyEmail = useCallback(async () => { // Use useCallback
+    const handleVerifyEmail = useCallback(async () => {
         try {
-            // Send email to backend, request OTP
             const res = await axios.post('http://localhost:5001/verify', { email });
-            const {allow,opt}=res.data
+            const { allow, opt } = res.data;
             setVotp(opt);
             setShowOtpInput(allow);
         } catch (err) {
@@ -86,7 +113,7 @@ function Signup() {
                 transition: Bounce,
             });
         }
-    }, [email]); // Dependency array includes email
+    }, [email]);
 
     return (
         <>
@@ -95,15 +122,23 @@ function Signup() {
                     <form className="flex-col justify-between" onSubmit={handleRegSubmit}>
                         <label className="text-[50px] font-bold">Register</label>
                         <br />
-                        <input
-                            className="m-[15px] p-[5px] border-black rounded-[10px] border-[2px] h-[50px] w-[300px]"
-                            type="text"
-                            placeholder="Username"
-                            onChange={(e) => setUsername(e.target.value)}
-                            required
-                            minLength="3"
-                        />
-                        <br />
+                        <div>
+                            <input
+                                className="m-[15px] p-[5px] border-black rounded-[10px] border-[2px] h-[50px] w-[300px]"
+                                type="text"
+                                placeholder="Username"
+                                value={username}
+                                onChange={(e) => {
+                                    setUsername(e.target.value);
+                                    validateUsername(e.target.value);
+                                }}
+                                required
+                                minLength="3"
+                            />
+                            {usernameError && (
+                                <label className="pl-[15px] text-red-500 block">{usernameError}</label>
+                            )}
+                        </div>
                         <div className="flex items-center">
                             <input
                                 className="m-[15px] p-[5px] border-black rounded-[10px] border-[2px] h-[50px] w-[200px]"
@@ -114,16 +149,19 @@ function Signup() {
                             />
                             <button type="button" className="m-[15px] p-[5px] bg-blue-500 text-white rounded" onClick={handleVerifyEmail}>Verify</button>
                         </div>
-                            {showOtpInput && <>  <input
-                                className="m-[15px] p-[5px] border-black rounded-[10px] border-[2px] h-[50px] w-[300px]"
-                                type="text"
-                                placeholder="OTP (6 digits)"
-                                onChange={(e) => setOtp(e.target.value)}
-                                maxLength="6"
-                                required
-                            />
-                            <br />
-                            </>}
+                        {showOtpInput && (
+                            <>
+                                <input
+                                    className="m-[15px] p-[5px] border-black rounded-[10px] border-[2px] h-[50px] w-[300px]"
+                                    type="text"
+                                    placeholder="OTP (6 digits)"
+                                    onChange={(e) => setOtp(e.target.value)}
+                                    maxLength="6"
+                                    required
+                                />
+                                <br />
+                            </>
+                        )}
                         <input
                             className="m-[15px] p-[5px] border-black rounded-[10px] border-[2px] h-[50px] w-[300px]"
                             type="password"
